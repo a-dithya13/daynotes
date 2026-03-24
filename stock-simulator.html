@@ -1,0 +1,1508 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MarketQuest — Historical Stock Simulator</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0e1a;
+    --surface: #111827;
+    --surface2: #1a2235;
+    --surface3: #212d42;
+    --border: #2a3a55;
+    --accent: #00e5ff;
+    --accent2: #7c3aed;
+    --green: #00e676;
+    --red: #ff1744;
+    --yellow: #ffd600;
+    --orange: #ff6d00;
+    --text: #e8edf5;
+    --text2: #8899b4;
+    --text3: #4a5a78;
+    --glow: 0 0 20px rgba(0,229,255,0.15);
+    --radius: 12px;
+    --font-head: 'Syne', sans-serif;
+    --font-mono: 'Space Mono', monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-mono);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background: radial-gradient(ellipse 80% 60% at 50% -10%, rgba(0,229,255,0.07) 0%, transparent 70%),
+                radial-gradient(ellipse 40% 40% at 90% 90%, rgba(124,58,237,0.06) 0%, transparent 60%);
+    pointer-events: none; z-index: 0;
+  }
+
+  /* ── NAV ── */
+  nav {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(10,14,26,0.92);
+    backdrop-filter: blur(16px);
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 0;
+    padding: 0 24px; height: 60px;
+  }
+  .nav-logo {
+    font-family: var(--font-head);
+    font-weight: 800; font-size: 1.2rem;
+    color: var(--accent);
+    margin-right: 32px;
+    letter-spacing: -0.5px;
+    white-space: nowrap;
+  }
+  .nav-logo span { color: var(--text2); font-weight: 400; }
+  .nav-tabs { display: flex; gap: 2px; flex: 1; }
+  .nav-tab {
+    background: none; border: none; cursor: pointer;
+    color: var(--text2); font-family: var(--font-mono);
+    font-size: 0.72rem; padding: 8px 14px; border-radius: 8px;
+    transition: all .2s; letter-spacing: 0.5px; text-transform: uppercase;
+    white-space: nowrap;
+  }
+  .nav-tab:hover { background: var(--surface2); color: var(--text); }
+  .nav-tab.active { background: var(--surface2); color: var(--accent); border: 1px solid rgba(0,229,255,0.2); }
+  .nav-right {
+    display: flex; align-items: center; gap: 12px; margin-left: auto;
+  }
+  .nav-balance {
+    font-family: var(--font-head); font-weight: 700; font-size: 0.95rem;
+    color: var(--green);
+  }
+  .nav-balance-label { font-size: 0.65rem; color: var(--text3); }
+  .nav-day-badge {
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 8px; padding: 4px 12px;
+    font-size: 0.7rem; color: var(--text2); letter-spacing: 1px;
+  }
+  .btn-next-day {
+    background: linear-gradient(135deg, var(--accent2), #4f46e5);
+    border: none; border-radius: 8px; cursor: pointer;
+    color: #fff; font-family: var(--font-mono);
+    font-size: 0.72rem; padding: 8px 18px; font-weight: 700;
+    letter-spacing: 0.5px; transition: all .2s;
+    text-transform: uppercase;
+  }
+  .btn-next-day:hover { opacity: .85; transform: translateY(-1px); box-shadow: 0 4px 16px rgba(124,58,237,.4); }
+  .btn-next-day:disabled { opacity: .4; cursor: not-allowed; transform: none; }
+
+  /* ── PAGES ── */
+  .page { display: none; padding: 24px; position: relative; z-index: 1; max-width: 1400px; margin: 0 auto; }
+  .page.active { display: block; animation: fadeIn .25s ease; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+  /* ── CARDS ── */
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 20px;
+  }
+  .card-title {
+    font-family: var(--font-head); font-size: 0.7rem;
+    font-weight: 600; color: var(--text3); text-transform: uppercase;
+    letter-spacing: 2px; margin-bottom: 8px;
+  }
+  .card-value {
+    font-family: var(--font-head); font-size: 1.6rem; font-weight: 800;
+  }
+  .card-sub { font-size: 0.72rem; color: var(--text2); margin-top: 4px; }
+
+  /* ── GRID HELPERS ── */
+  .grid-4 { display: grid; grid-template-columns: repeat(4,1fr); gap: 16px; }
+  .grid-3 { display: grid; grid-template-columns: repeat(3,1fr); gap: 16px; }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .grid-main { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; }
+
+  .up { color: var(--green); }
+  .down { color: var(--red); }
+  .neutral { color: var(--text2); }
+
+  /* ── STOCK TABLE ── */
+  .stock-table { width: 100%; border-collapse: collapse; }
+  .stock-table th {
+    font-size: 0.65rem; color: var(--text3); text-transform: uppercase;
+    letter-spacing: 1.5px; padding: 8px 12px; text-align: left;
+    border-bottom: 1px solid var(--border); font-weight: 400;
+  }
+  .stock-table td { padding: 10px 12px; font-size: 0.78rem; border-bottom: 1px solid rgba(42,58,85,0.5); }
+  .stock-table tr:hover td { background: var(--surface2); }
+  .stock-ticker {
+    font-family: var(--font-mono); font-weight: 700; font-size: 0.8rem;
+  }
+  .stock-name { font-size: 0.7rem; color: var(--text2); }
+  .sector-badge {
+    display: inline-block; font-size: 0.58rem; padding: 2px 7px;
+    border-radius: 4px; letter-spacing: 0.5px; text-transform: uppercase; font-weight: 700;
+  }
+  .sector-tech { background: rgba(0,229,255,.12); color: var(--accent); }
+  .sector-finance { background: rgba(124,58,237,.15); color: #a78bfa; }
+  .sector-energy { background: rgba(255,109,0,.12); color: var(--orange); }
+  .sector-consumer { background: rgba(0,230,118,.1); color: var(--green); }
+  .sector-india { background: rgba(255,214,0,.1); color: var(--yellow); }
+
+  .btn-buy, .btn-sell {
+    border: none; border-radius: 6px; cursor: pointer;
+    font-family: var(--font-mono); font-size: 0.65rem; font-weight: 700;
+    padding: 5px 12px; transition: all .15s; text-transform: uppercase; letter-spacing: .5px;
+  }
+  .btn-buy { background: rgba(0,230,118,.15); color: var(--green); border: 1px solid rgba(0,230,118,.3); }
+  .btn-buy:hover { background: rgba(0,230,118,.25); }
+  .btn-sell { background: rgba(255,23,68,.1); color: var(--red); border: 1px solid rgba(255,23,68,.25); }
+  .btn-sell:hover { background: rgba(255,23,68,.2); }
+
+  /* ── MODAL ── */
+  .modal-overlay {
+    display: none; position: fixed; inset: 0; z-index: 200;
+    background: rgba(0,0,0,.7); backdrop-filter: blur(8px);
+    align-items: center; justify-content: center;
+  }
+  .modal-overlay.open { display: flex; }
+  .modal {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 16px; padding: 28px; width: 380px; max-width: 95vw;
+    box-shadow: 0 24px 80px rgba(0,0,0,.6);
+    animation: modalIn .2s ease;
+  }
+  @keyframes modalIn { from { transform: scale(.94) translateY(12px); opacity: 0; } to { transform: scale(1) translateY(0); opacity: 1; } }
+  .modal h3 { font-family: var(--font-head); font-size: 1.1rem; font-weight: 800; margin-bottom: 4px; }
+  .modal-sub { font-size: 0.72rem; color: var(--text2); margin-bottom: 20px; }
+  .modal-price { font-size: 1.4rem; font-weight: 700; font-family: var(--font-head); color: var(--accent); }
+  .form-row { margin-bottom: 16px; }
+  .form-label { font-size: 0.65rem; color: var(--text3); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; display: block; }
+  .form-input {
+    width: 100%; background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 8px; color: var(--text); font-family: var(--font-mono);
+    font-size: 0.85rem; padding: 10px 14px; outline: none; transition: border .15s;
+  }
+  .form-input:focus { border-color: var(--accent); }
+  .modal-total { background: var(--surface2); border-radius: 8px; padding: 12px 16px; margin-bottom: 20px; font-size: 0.8rem; }
+  .modal-total span { color: var(--text2); }
+  .modal-total strong { color: var(--text); font-size: 1rem; float: right; }
+  .modal-actions { display: flex; gap: 10px; }
+  .btn-confirm-buy { flex: 1; background: var(--green); color: #000; border: none; border-radius: 8px; padding: 12px; font-family: var(--font-mono); font-weight: 700; font-size: 0.8rem; cursor: pointer; text-transform: uppercase; letter-spacing: .5px; transition: opacity .15s; }
+  .btn-confirm-buy:hover { opacity: .85; }
+  .btn-confirm-sell { flex: 1; background: var(--red); color: #fff; border: none; border-radius: 8px; padding: 12px; font-family: var(--font-mono); font-weight: 700; font-size: 0.8rem; cursor: pointer; text-transform: uppercase; letter-spacing: .5px; transition: opacity .15s; }
+  .btn-confirm-sell:hover { opacity: .85; }
+  .btn-cancel { flex: 0 0 80px; background: var(--surface2); color: var(--text2); border: 1px solid var(--border); border-radius: 8px; padding: 12px; font-family: var(--font-mono); font-size: 0.8rem; cursor: pointer; transition: all .15s; }
+  .btn-cancel:hover { color: var(--text); }
+
+  /* ── CHART CONTAINER ── */
+  .chart-wrap { position: relative; height: 220px; }
+  .chart-wrap-lg { position: relative; height: 320px; }
+
+  /* ── ACHIEVEMENTS ── */
+  .achievement {
+    display: flex; align-items: center; gap: 12px;
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 10px; padding: 12px 16px; margin-bottom: 8px; transition: border .2s;
+  }
+  .achievement.unlocked { border-color: rgba(0,229,255,.3); }
+  .achievement-icon { font-size: 1.4rem; width: 36px; text-align: center; flex-shrink: 0; }
+  .achievement-name { font-family: var(--font-head); font-size: 0.82rem; font-weight: 700; }
+  .achievement-desc { font-size: 0.67rem; color: var(--text2); margin-top: 2px; }
+  .achievement-badge { margin-left: auto; font-size: 0.6rem; padding: 3px 8px; border-radius: 4px; text-transform: uppercase; font-weight: 700; }
+  .achievement.unlocked .achievement-badge { background: rgba(0,229,255,.15); color: var(--accent); }
+  .achievement:not(.unlocked) .achievement-badge { background: var(--surface3); color: var(--text3); }
+  .achievement:not(.unlocked) { opacity: .55; }
+
+  /* ── REP SCORE ── */
+  .rep-bar-bg { background: var(--surface3); border-radius: 999px; height: 8px; margin-top: 8px; }
+  .rep-bar { background: linear-gradient(90deg, var(--accent2), var(--accent)); border-radius: 999px; height: 8px; transition: width 1s ease; }
+
+  /* ── NEWS ITEMS ── */
+  .news-item {
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 10px; padding: 16px 18px; margin-bottom: 10px;
+    display: flex; gap: 14px; align-items: flex-start;
+    transition: border .2s;
+  }
+  .news-item:hover { border-color: var(--accent); }
+  .news-icon { font-size: 1.5rem; flex-shrink: 0; }
+  .news-title { font-family: var(--font-head); font-weight: 700; font-size: 0.88rem; margin-bottom: 4px; }
+  .news-body { font-size: 0.72rem; color: var(--text2); line-height: 1.6; }
+  .news-meta { font-size: 0.62rem; color: var(--text3); margin-top: 6px; letter-spacing: .5px; }
+  .news-impact { font-size: 0.62rem; padding: 2px 8px; border-radius: 4px; font-weight: 700; text-transform: uppercase; margin-left: 8px; }
+  .impact-positive { background: rgba(0,230,118,.12); color: var(--green); }
+  .impact-negative { background: rgba(255,23,68,.1); color: var(--red); }
+  .impact-neutral { background: rgba(136,153,180,.1); color: var(--text2); }
+
+  /* ── PORTFOLIO HOLDINGS ── */
+  .holding-row {
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 10px; padding: 14px 18px; margin-bottom: 8px;
+    display: flex; align-items: center; gap: 16px;
+  }
+  .holding-ticker { font-weight: 700; font-size: 0.9rem; min-width: 60px; }
+  .holding-shares { font-size: 0.72rem; color: var(--text2); flex: 1; }
+  .holding-value { font-family: var(--font-head); font-weight: 700; }
+  .holding-pl { font-size: 0.75rem; font-weight: 700; }
+  .pnl-bar-bg { height: 3px; background: var(--surface3); border-radius: 999px; margin-top: 4px; }
+  .pnl-bar { height: 3px; border-radius: 999px; transition: width .5s; }
+
+  /* ── DAILY REPORT ── */
+  .report-overlay {
+    display: none; position: fixed; inset: 0; z-index: 300;
+    background: rgba(0,0,0,.8); backdrop-filter: blur(12px);
+    align-items: center; justify-content: center; padding: 20px;
+  }
+  .report-overlay.open { display: flex; animation: fadeIn .3s ease; }
+  .report-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 20px; padding: 32px; width: 520px; max-width: 95vw; max-height: 90vh; overflow-y: auto;
+    box-shadow: 0 32px 100px rgba(0,0,0,.7);
+  }
+  .report-header { text-align: center; margin-bottom: 28px; }
+  .report-day { font-size: 0.65rem; color: var(--text3); text-transform: uppercase; letter-spacing: 2px; margin-bottom: 6px; }
+  .report-title { font-family: var(--font-head); font-size: 1.6rem; font-weight: 800; }
+  .report-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 20px; }
+  .report-stat { background: var(--surface2); border-radius: 10px; padding: 14px; }
+  .report-stat-label { font-size: 0.62rem; color: var(--text3); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; }
+  .report-stat-value { font-family: var(--font-head); font-size: 1.1rem; font-weight: 800; }
+  .report-events { margin-bottom: 20px; }
+  .report-event { background: var(--surface2); border-left: 3px solid var(--accent); border-radius: 0 8px 8px 0; padding: 10px 14px; margin-bottom: 8px; font-size: 0.75rem; }
+  .report-tip { background: rgba(124,58,237,.1); border: 1px solid rgba(124,58,237,.25); border-radius: 10px; padding: 14px 16px; font-size: 0.75rem; color: var(--text2); line-height: 1.6; }
+  .report-tip strong { color: var(--accent2); }
+  .btn-close-report { width: 100%; background: linear-gradient(135deg, var(--accent2), var(--accent)); border: none; border-radius: 10px; color: #fff; font-family: var(--font-mono); font-weight: 700; font-size: 0.8rem; padding: 14px; cursor: pointer; text-transform: uppercase; letter-spacing: 1px; margin-top: 20px; transition: opacity .15s; }
+  .btn-close-report:hover { opacity: .85; }
+
+  /* ── TOAST ── */
+  .toast {
+    position: fixed; bottom: 24px; right: 24px; z-index: 500;
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 10px; padding: 14px 20px; font-size: 0.78rem;
+    box-shadow: 0 8px 32px rgba(0,0,0,.5); transform: translateX(120%);
+    transition: transform .3s ease; max-width: 320px;
+  }
+  .toast.show { transform: translateX(0); }
+  .toast.success { border-left: 3px solid var(--green); }
+  .toast.error { border-left: 3px solid var(--red); }
+  .toast.info { border-left: 3px solid var(--accent); }
+
+  /* ── STRATEGY PAGE ── */
+  .insight-card {
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 12px; padding: 20px; margin-bottom: 12px;
+  }
+  .insight-title { font-family: var(--font-head); font-size: 0.88rem; font-weight: 700; margin-bottom: 6px; }
+  .insight-body { font-size: 0.73rem; color: var(--text2); line-height: 1.7; }
+  .personality-box {
+    background: linear-gradient(135deg, rgba(124,58,237,.15), rgba(0,229,255,.08));
+    border: 1px solid rgba(124,58,237,.3); border-radius: 12px; padding: 24px;
+    text-align: center; margin-bottom: 20px;
+  }
+  .personality-label { font-size: 0.65rem; color: var(--text3); text-transform: uppercase; letter-spacing: 2px; margin-bottom: 8px; }
+  .personality-name { font-family: var(--font-head); font-size: 1.5rem; font-weight: 800; color: var(--accent); }
+  .personality-desc { font-size: 0.75rem; color: var(--text2); margin-top: 8px; line-height: 1.6; }
+
+  /* ── SECTOR DONUT ── */
+  .chart-wrap-sm { position: relative; height: 180px; }
+
+  /* ── PAGE TITLES ── */
+  .page-title { font-family: var(--font-head); font-size: 1.4rem; font-weight: 800; margin-bottom: 4px; }
+  .page-sub { font-size: 0.72rem; color: var(--text2); margin-bottom: 24px; }
+
+  /* ── MISC UTILS ── */
+  .gap-16 { gap: 16px; }
+  .mb-16 { margin-bottom: 16px; }
+  .mb-24 { margin-bottom: 24px; }
+  .divider { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
+  .scroll-area { overflow-y: auto; max-height: 420px; }
+  .scroll-area::-webkit-scrollbar { width: 4px; }
+  .scroll-area::-webkit-scrollbar-track { background: transparent; }
+  .scroll-area::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+  .tag { display: inline-block; font-size: 0.6rem; padding: 2px 7px; border-radius: 4px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; }
+  .intro-screen {
+    position: fixed; inset: 0; z-index: 999;
+    background: var(--bg); display: flex; flex-direction: column;
+    align-items: center; justify-content: center; text-align: center; padding: 24px;
+  }
+  .intro-logo { font-family: var(--font-head); font-size: 3rem; font-weight: 800; color: var(--accent); margin-bottom: 8px; }
+  .intro-tagline { font-size: 0.85rem; color: var(--text2); margin-bottom: 40px; max-width: 480px; line-height: 1.7; }
+  .intro-stats { display: flex; gap: 32px; margin-bottom: 40px; }
+  .intro-stat-label { font-size: 0.62rem; color: var(--text3); text-transform: uppercase; letter-spacing: 1.5px; }
+  .intro-stat-value { font-family: var(--font-head); font-size: 1.1rem; font-weight: 800; color: var(--text); margin-top: 4px; }
+  .btn-start { background: linear-gradient(135deg, var(--accent2), var(--accent)); border: none; border-radius: 12px; color: #fff; font-family: var(--font-mono); font-weight: 700; font-size: 0.9rem; padding: 16px 48px; cursor: pointer; text-transform: uppercase; letter-spacing: 2px; transition: all .2s; }
+  .btn-start:hover { transform: translateY(-2px); box-shadow: 0 8px 32px rgba(0,229,255,.25); }
+  .ticker-tape {
+    position: fixed; bottom: 0; left: 0; right: 0; height: 32px;
+    background: rgba(10,14,26,.9); border-top: 1px solid var(--border);
+    overflow: hidden; display: flex; align-items: center; z-index: 90;
+  }
+  .ticker-inner {
+    display: flex; gap: 48px; white-space: nowrap;
+    animation: ticker 30s linear infinite;
+    font-size: 0.65rem; letter-spacing: .5px;
+  }
+  @keyframes ticker { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+  .ticker-item { display: flex; gap: 8px; align-items: center; }
+  .ticker-sym { font-weight: 700; color: var(--text); }
+  .sparkline { display: inline-flex; gap: 1px; align-items: flex-end; height: 18px; }
+  .sparkline-bar { width: 3px; border-radius: 1px; background: var(--accent); }
+
+  @media (max-width: 900px) {
+    .grid-4 { grid-template-columns: 1fr 1fr; }
+    .grid-main { grid-template-columns: 1fr; }
+    .grid-3 { grid-template-columns: 1fr; }
+    .grid-2 { grid-template-columns: 1fr; }
+    .nav-tabs .nav-tab { padding: 8px 8px; font-size: 0.6rem; }
+  }
+  @media (max-width: 600px) {
+    .grid-4 { grid-template-columns: 1fr; }
+    nav { padding: 0 12px; }
+    .nav-logo { font-size: 1rem; margin-right: 12px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- INTRO -->
+<div class="intro-screen" id="introScreen">
+  <div class="intro-logo">MarketQuest</div>
+  <p style="font-size:0.72rem;color:var(--text3);letter-spacing:2px;text-transform:uppercase;margin-bottom:16px;">Historical Stock Simulator</p>
+  <p class="intro-tagline">Master the stock market using real historical scenarios — no real money at risk. Buy, sell, survive crashes, and build your investor legacy.</p>
+  <div class="intro-stats">
+    <div>
+      <div class="intro-stat-label">Starting Capital</div>
+      <div class="intro-stat-value">₹10,000</div>
+    </div>
+    <div>
+      <div class="intro-stat-label">Stocks Available</div>
+      <div class="intro-stat-value">25</div>
+    </div>
+    <div>
+      <div class="intro-stat-label">Sim Days</div>
+      <div class="intro-stat-value">365</div>
+    </div>
+  </div>
+  <button class="btn-start" onclick="startGame()">Start Simulation →</button>
+</div>
+
+<!-- NAV -->
+<nav>
+  <div class="nav-logo">Market<span>Quest</span></div>
+  <div class="nav-tabs">
+    <button class="nav-tab active" onclick="showPage('dashboard',this)">Dashboard</button>
+    <button class="nav-tab" onclick="showPage('market',this)">Market</button>
+    <button class="nav-tab" onclick="showPage('portfolio',this)">Portfolio</button>
+    <button class="nav-tab" onclick="showPage('news',this)">News</button>
+    <button class="nav-tab" onclick="showPage('strategy',this)">Insights</button>
+  </div>
+  <div class="nav-right">
+    <div>
+      <div class="nav-balance-label">Cash</div>
+      <div class="nav-balance" id="navCash">₹10,000</div>
+    </div>
+    <div class="nav-day-badge" id="navDay">DAY 1 / 365</div>
+    <button class="btn-next-day" id="btnNextDay" onclick="advanceDay()">Next Day ▶</button>
+  </div>
+</nav>
+
+<!-- ═══ DASHBOARD ═══ -->
+<div class="page active" id="page-dashboard">
+  <div class="page-title">Dashboard</div>
+  <div class="page-sub" id="dashDate">Simulation not started</div>
+
+  <div class="grid-4 mb-16">
+    <div class="card">
+      <div class="card-title">Portfolio Value</div>
+      <div class="card-value up" id="dashPortfolio">₹10,000</div>
+      <div class="card-sub" id="dashPortfolioChange">+₹0 (0.00%)</div>
+    </div>
+    <div class="card">
+      <div class="card-title">Cash Available</div>
+      <div class="card-value" id="dashCash">₹10,000</div>
+      <div class="card-sub" id="dashCashPct">100% of portfolio</div>
+    </div>
+    <div class="card">
+      <div class="card-title">Today's P&L</div>
+      <div class="card-value neutral" id="dashDayPL">₹0</div>
+      <div class="card-sub" id="dashDayPLPct">Market closed</div>
+    </div>
+    <div class="card">
+      <div class="card-title">Rep Score</div>
+      <div class="card-value" id="dashRep" style="color:var(--accent)">0</div>
+      <div class="rep-bar-bg"><div class="rep-bar" id="dashRepBar" style="width:0%"></div></div>
+    </div>
+  </div>
+
+  <div class="grid-main mb-16">
+    <div class="card">
+      <div class="card-title">Portfolio Value Over Time</div>
+      <div class="chart-wrap-lg"><canvas id="portfolioChart"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Sector Allocation</div>
+      <div class="chart-wrap-sm"><canvas id="sectorChart"></canvas></div>
+      <div id="sectorLegend" style="margin-top:12px;font-size:0.68rem;"></div>
+    </div>
+  </div>
+
+  <div class="grid-2">
+    <div class="card">
+      <div class="card-title">Top Holdings</div>
+      <div id="topHoldingsList">
+        <p style="color:var(--text3);font-size:0.75rem;padding:12px 0;">No holdings yet. Go to Market to buy stocks.</p>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">Recent Achievements</div>
+      <div id="recentAchievements">
+        <p style="color:var(--text3);font-size:0.75rem;padding:12px 0;">Start trading to unlock achievements!</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ MARKET ═══ -->
+<div class="page" id="page-market">
+  <div class="page-title">Market</div>
+  <div class="page-sub" id="marketDate">Select a stock to view chart and trade</div>
+
+  <div class="grid-main">
+    <div class="card" style="padding:0;overflow:hidden;">
+      <div style="padding:16px 20px;border-bottom:1px solid var(--border);display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+        <input class="form-input" style="max-width:200px;padding:8px 12px;font-size:0.72rem;" placeholder="Search stocks..." id="stockSearch" oninput="filterStocks()">
+        <div style="display:flex;gap:6px;flex-wrap:wrap;" id="sectorFilters">
+          <button class="tag sector-tech" style="cursor:pointer;padding:5px 10px;" onclick="filterBySector('all')">All</button>
+          <button class="tag sector-tech" style="cursor:pointer;padding:5px 10px;" onclick="filterBySector('Technology')">Tech</button>
+          <button class="tag sector-finance" style="cursor:pointer;padding:5px 10px;" onclick="filterBySector('Finance')">Finance</button>
+          <button class="tag sector-energy" style="cursor:pointer;padding:5px 10px;" onclick="filterBySector('Energy')">Energy</button>
+          <button class="tag sector-consumer" style="cursor:pointer;padding:5px 10px;" onclick="filterBySector('Consumer')">Consumer</button>
+          <button class="tag sector-india" style="cursor:pointer;padding:5px 10px;" onclick="filterBySector('India')">India</button>
+        </div>
+      </div>
+      <div class="scroll-area" style="max-height:560px;">
+        <table class="stock-table" id="stockTable">
+          <thead><tr>
+            <th>Stock</th><th>Sector</th><th>Price</th><th>Change</th><th>Volume</th><th>Action</th>
+          </tr></thead>
+          <tbody id="stockTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <div id="chartStockTitle" style="font-family:var(--font-head);font-size:1rem;font-weight:800;margin-bottom:2px;">Select a Stock</div>
+      <div id="chartStockSub" style="font-size:0.7rem;color:var(--text2);margin-bottom:14px;">Click any row to view chart</div>
+      <div class="chart-wrap-lg"><canvas id="stockChart"></canvas></div>
+      <div style="margin-top:16px;display:flex;gap:8px;" id="chartActions" style="display:none;"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ PORTFOLIO ═══ -->
+<div class="page" id="page-portfolio">
+  <div class="page-title">Portfolio</div>
+  <div class="page-sub">Your current holdings and performance</div>
+
+  <div class="grid-4 mb-24" id="portfolioStats"></div>
+
+  <div class="grid-2">
+    <div>
+      <div class="card-title" style="margin-bottom:10px;">Holdings</div>
+      <div id="holdingsList">
+        <p style="color:var(--text3);font-size:0.75rem;">No holdings.</p>
+      </div>
+    </div>
+    <div>
+      <div class="card-title" style="margin-bottom:10px;">Allocation Breakdown</div>
+      <div class="card" style="margin-bottom:16px;">
+        <div class="chart-wrap"><canvas id="portfolioDonut"></canvas></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Trade History</div>
+        <div class="scroll-area" style="max-height:200px;" id="tradeHistory">
+          <p style="color:var(--text3);font-size:0.72rem;">No trades yet.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ NEWS ═══ -->
+<div class="page" id="page-news">
+  <div class="page-title">Market News</div>
+  <div class="page-sub">Events affecting the market during your simulation</div>
+  <div id="newsFeed">
+    <p style="color:var(--text3);font-size:0.75rem;">Advance the simulation to see market events.</p>
+  </div>
+</div>
+
+<!-- ═══ STRATEGY INSIGHTS ═══ -->
+<div class="page" id="page-strategy">
+  <div class="page-title">Strategy Insights</div>
+  <div class="page-sub">AI-powered analysis of your trading behavior</div>
+
+  <div class="personality-box mb-24" id="personalityBox">
+    <div class="personality-label">Your Investor Personality</div>
+    <div class="personality-name" id="personalityName">Undecided</div>
+    <div class="personality-desc" id="personalityDesc">Make at least 5 trades to determine your investor personality type.</div>
+  </div>
+
+  <div class="grid-2 mb-16">
+    <div class="card">
+      <div class="card-title">Trading Stats</div>
+      <div id="tradingStats" style="font-size:0.78rem;color:var(--text2);line-height:2;">Make some trades to see stats.</div>
+    </div>
+    <div class="card">
+      <div class="card-title">Risk Analysis</div>
+      <div id="riskAnalysis" style="font-size:0.78rem;color:var(--text2);line-height:2;">Trade more to unlock risk analysis.</div>
+    </div>
+  </div>
+
+  <div class="card-title" style="margin-bottom:10px;">Achievements</div>
+  <div id="achievementsList"></div>
+</div>
+
+<!-- ═══ MODALS ═══ -->
+<div class="modal-overlay" id="tradeModal">
+  <div class="modal">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px;">
+      <div>
+        <h3 id="modalTitle">Buy AAPL</h3>
+        <p class="modal-sub" id="modalSub">Apple Inc. · Technology</p>
+      </div>
+      <div class="modal-price" id="modalPrice">₹0</div>
+    </div>
+    <hr class="divider">
+    <div class="form-row">
+      <label class="form-label">Quantity</label>
+      <input class="form-input" type="number" id="modalQty" min="1" value="1" oninput="updateModalTotal()">
+    </div>
+    <div class="modal-total">
+      <span>Total Cost</span>
+      <strong id="modalTotal">₹0</strong>
+    </div>
+    <div style="font-size:0.68rem;color:var(--text2);margin-bottom:16px;" id="modalBalance">Available: ₹0</div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal()">Cancel</button>
+      <button class="btn-confirm-buy" id="modalConfirmBtn" onclick="confirmTrade()">Buy</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ DAILY REPORT ═══ -->
+<div class="report-overlay" id="reportOverlay">
+  <div class="report-card">
+    <div class="report-header">
+      <div class="report-day" id="reportDay">END OF DAY 1</div>
+      <div class="report-title" id="reportTitle">Day Complete!</div>
+    </div>
+    <div class="report-grid" id="reportGrid"></div>
+    <div id="reportEvents" class="report-events"></div>
+    <div class="report-tip" id="reportTip"></div>
+    <button class="btn-close-report" onclick="closeReport()">Continue to Next Day →</button>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div class="toast" id="toast"></div>
+
+<!-- TICKER -->
+<div class="ticker-tape" style="padding-bottom:2px;">
+  <div class="ticker-inner" id="tickerInner"></div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════
+//  DATA ENGINE
+// ═══════════════════════════════════════════════════════
+
+const STOCKS = [
+  { ticker:'AAPL', name:'Apple Inc.',       sector:'Technology',  base:175 },
+  { ticker:'MSFT', name:'Microsoft Corp.',   sector:'Technology',  base:330 },
+  { ticker:'NVDA', name:'Nvidia Corp.',      sector:'Technology',  base:480 },
+  { ticker:'GOOGL',name:'Alphabet Inc.',     sector:'Technology',  base:140 },
+  { ticker:'META', name:'Meta Platforms',    sector:'Technology',  base:320 },
+  { ticker:'TSLA', name:'Tesla Inc.',        sector:'Technology',  base:250 },
+  { ticker:'AMZN', name:'Amazon.com',        sector:'Technology',  base:178 },
+  { ticker:'JPM',  name:'JPMorgan Chase',    sector:'Finance',     base:185 },
+  { ticker:'BAC',  name:'Bank of America',   sector:'Finance',     base:37 },
+  { ticker:'GS',   name:'Goldman Sachs',     sector:'Finance',     base:395 },
+  { ticker:'V',    name:'Visa Inc.',         sector:'Finance',     base:260 },
+  { ticker:'XOM',  name:'ExxonMobil',        sector:'Energy',      base:105 },
+  { ticker:'CVX',  name:'Chevron Corp.',     sector:'Energy',      base:155 },
+  { ticker:'BP',   name:'BP p.l.c.',         sector:'Energy',      base:42 },
+  { ticker:'KO',   name:'Coca-Cola Co.',     sector:'Consumer',    base:62 },
+  { ticker:'PEP',  name:'PepsiCo Inc.',      sector:'Consumer',    base:175 },
+  { ticker:'MCD',  name:"McDonald's Corp",   sector:'Consumer',    base:290 },
+  { ticker:'WMT',  name:'Walmart Inc.',      sector:'Consumer',    base:168 },
+  { ticker:'RELIANCE',name:'Reliance Ind.',  sector:'India',       base:2800 },
+  { ticker:'TCS',  name:'Tata Consultancy',  sector:'India',       base:3700 },
+  { ticker:'INFY', name:'Infosys Ltd.',      sector:'India',       base:1800 },
+  { ticker:'HDFC', name:'HDFC Bank',         sector:'India',       base:1600 },
+  { ticker:'WIPRO',name:'Wipro Ltd.',        sector:'India',       base:450 },
+  { ticker:'TITAN',name:'Titan Company',     sector:'India',       base:3200 },
+  { ticker:'BAJAJ',name:'Bajaj Finance',     sector:'India',       base:7200 },
+];
+
+const SECTOR_COLORS = {
+  Technology: '#00e5ff',
+  Finance:    '#a78bfa',
+  Energy:     '#ff6d00',
+  Consumer:   '#00e676',
+  India:      '#ffd600',
+};
+
+const EVENTS = [
+  { day: 10, title:'Fed Rate Hike', body:'Federal Reserve raises rates by 25bps, markets react cautiously.', sectors:['Finance'], impact:0.04, type:'positive', icon:'🏦' },
+  { day: 20, title:'Tech Earnings Boom', body:'Major tech companies report better-than-expected earnings, driving sector higher.', sectors:['Technology'], impact:0.07, type:'positive', icon:'💻' },
+  { day: 30, title:'Oil Supply Cut', body:'OPEC announces production cuts, crude oil surges.', sectors:['Energy'], impact:0.09, type:'positive', icon:'🛢️' },
+  { day: 45, title:'Inflation Data Hot', body:'CPI comes in hotter than expected, broad market selloff.', sectors:['Technology','Finance','Consumer'], impact:-0.05, type:'negative', icon:'📈' },
+  { day: 60, title:'Indian Budget Boost', body:'India announces infrastructure spending, Indian stocks rally.', sectors:['India'], impact:0.08, type:'positive', icon:'🇮🇳' },
+  { day: 80, title:'Banking Crisis Fear', body:'Concerns over regional bank liquidity spark financial sector selloff.', sectors:['Finance'], impact:-0.08, type:'negative', icon:'⚠️' },
+  { day: 100,title:'AI Frenzy', body:'New AI announcements push tech valuations to record highs.', sectors:['Technology'], impact:0.12, type:'positive', icon:'🤖' },
+  { day: 120,title:'Recession Fears', body:'GDP data disappoints, recession fears grow. Defensive stocks outperform.', sectors:['Technology','Finance','Energy'], impact:-0.10, type:'negative', icon:'📉' },
+  { day: 140,title:'Consumer Boom', body:'Retail sales data blowout—consumer discretionary rallies.', sectors:['Consumer'], impact:0.06, type:'positive', icon:'🛒' },
+  { day: 160,title:'Energy Demand Drop', body:'Warmer-than-expected winter reduces energy demand forecasts.', sectors:['Energy'], impact:-0.07, type:'negative', icon:'❄️' },
+  { day: 180,title:'Global Pandemic Alert', body:'WHO issues global health warning. Travel and consumer stocks sell off.', sectors:['Consumer','Technology'], impact:-0.15, type:'negative', icon:'🦠' },
+  { day: 200,title:'Vaccine Approval', body:'FDA approves next-gen vaccine. Market sentiment improves sharply.', sectors:['Consumer','Technology','Finance'], impact:0.08, type:'positive', icon:'💉' },
+  { day: 220,title:'Rupee Strengthens', body:'INR hits multi-month high vs USD, boosting import-heavy Indian firms.', sectors:['India'], impact:0.05, type:'positive', icon:'💵' },
+  { day: 250,title:'Tech Antitrust Probe', body:'DOJ announces antitrust investigation into big tech platforms.', sectors:['Technology'], impact:-0.06, type:'negative', icon:'⚖️' },
+  { day: 280,title:'Year-End Rally', body:'Classic Santa Claus rally pushes markets to year-end highs.', sectors:['Technology','Finance','Consumer','India'], impact:0.06, type:'positive', icon:'🎄' },
+  { day: 320,title:'Earnings Season Beats', body:'Majority of S&P 500 companies beat Q4 earnings estimates.', sectors:['Technology','Finance'], impact:0.05, type:'positive', icon:'📊' },
+  { day: 350,title:'Flash Crash Scare', body:'Algorithmic trading triggers brief 3% market drop before recovering.', sectors:['Technology','Finance','Energy','Consumer','India'], impact:-0.03, type:'negative', icon:'⚡' },
+];
+
+const ACHIEVEMENTS = [
+  { id:'first_buy',    icon:'🛒', name:'First Trade',       desc:'Made your first stock purchase.',              check: s => s.totalTrades >= 1 },
+  { id:'first_profit', icon:'💰', name:'First Profit',      desc:'Closed a trade with a profit.',                check: s => s.profitableTrades >= 1 },
+  { id:'diversified',  icon:'🌐', name:'Diversified',       desc:'Held stocks in 3+ different sectors.',          check: s => s.sectorsHeld >= 3 },
+  { id:'hodler',       icon:'💎', name:'Diamond Hands',     desc:'Held a stock for 30+ days.',                   check: s => s.maxHoldDays >= 30 },
+  { id:'survivor',     icon:'🛡️', name:'Crash Survivor',    desc:'Portfolio stayed positive during a crash.',    check: s => s.survivedCrash },
+  { id:'momentum',     icon:'🚀', name:'Momentum Trader',   desc:'Bought 5 stocks within 3 days.',               check: s => s.burstBuys >= 5 },
+  { id:'big_profit',   icon:'🏆', name:'High Roller',       desc:'Portfolio 20% above starting value.',          check: s => s.portfolioPct >= 20 },
+  { id:'trader10',     icon:'🔟', name:'Active Trader',     desc:'Completed 10 trades.',                         check: s => s.totalTrades >= 10 },
+  { id:'sector_india', icon:'🇮🇳', name:'India Expert',     desc:'Held 3+ Indian stocks simultaneously.',        check: s => s.indiaStocks >= 3 },
+  { id:'patient',      icon:'🧘', name:'Patient Investor',  desc:'Went 10 days without trading.',                check: s => s.longestNoTrade >= 10 },
+];
+
+// ═══════════════════════════════════════════════════════
+//  STATE
+// ═══════════════════════════════════════════════════════
+let state = {
+  started: false,
+  day: 0,
+  maxDays: 365,
+  cash: 10000,
+  startingCash: 10000,
+  holdings: {},    // { ticker: { shares, avgCost, buyDay } }
+  tradeLog: [],
+  priceHistory: {},// { ticker: [p1,p2,...] }
+  currentPrices: {},
+  portfolioHistory: [10000],
+  news: [],
+  achievements: new Set(),
+  stats: {
+    totalTrades: 0, totalBuys: 0, totalSells: 0,
+    profitableTrades: 0, totalProfit: 0, totalLoss: 0,
+    sectorsHeld: 0, maxHoldDays: 0, survivedCrash: false,
+    burstBuys: 0, portfolioPct: 0, indiaStocks: 0,
+    longestNoTrade: 0, daysNoTrade: 0, recentBuys: [],
+  },
+  rep: 0,
+  activeFilter: 'all',
+  selectedTicker: null,
+  stockChartInst: null,
+  portfolioChartInst: null,
+  sectorChartInst: null,
+  portfolioDonutInst: null,
+  tradeMode: 'buy',
+  pendingTicker: null,
+  dayEvents: [],
+};
+
+// ═══════════════════════════════════════════════════════
+//  PRICE SIMULATION
+// ═══════════════════════════════════════════════════════
+function initPrices() {
+  STOCKS.forEach(s => {
+    state.priceHistory[s.ticker] = [s.base];
+    state.currentPrices[s.ticker] = s.base;
+  });
+}
+
+function generateDayPrices(dayIndex) {
+  const event = EVENTS.find(e => e.day === dayIndex);
+  STOCKS.forEach(s => {
+    const prev = state.currentPrices[s.ticker];
+    // Random walk: drift + volatility
+    const vol = s.sector === 'Technology' ? 0.022 :
+                s.sector === 'Energy' ? 0.019 :
+                s.sector === 'India' ? 0.025 : 0.015;
+    const drift = 0.0003;
+    let change = (Math.random() - 0.48) * vol + drift;
+
+    // Apply event impact
+    if (event && event.sectors.includes(s.sector)) {
+      change += event.impact * (0.7 + Math.random() * 0.6);
+    }
+
+    // Reversion to mean (mild)
+    const basePrice = s.base;
+    const ratio = prev / basePrice;
+    if (ratio > 2.0) change -= 0.004;
+    if (ratio < 0.5) change += 0.004;
+
+    const newPrice = Math.max(prev * (1 + change), 1);
+    state.currentPrices[s.ticker] = parseFloat(newPrice.toFixed(2));
+    state.priceHistory[s.ticker].push(parseFloat(newPrice.toFixed(2)));
+  });
+  return event;
+}
+
+// ═══════════════════════════════════════════════════════
+//  PORTFOLIO CALC
+// ═══════════════════════════════════════════════════════
+function getPortfolioValue() {
+  let total = state.cash;
+  Object.entries(state.holdings).forEach(([ticker, h]) => {
+    total += h.shares * state.currentPrices[ticker];
+  });
+  return total;
+}
+
+function getDayPL() {
+  if (state.portfolioHistory.length < 2) return 0;
+  const cur = getPortfolioValue();
+  const prev = state.portfolioHistory[state.portfolioHistory.length - 1];
+  return cur - prev;
+}
+
+function getSectorsHeld() {
+  const sectors = new Set();
+  Object.keys(state.holdings).forEach(ticker => {
+    const s = STOCKS.find(x => x.ticker === ticker);
+    if (s) sectors.add(s.sector);
+  });
+  return sectors.size;
+}
+
+function getIndiaStocks() {
+  return Object.keys(state.holdings).filter(t => {
+    const s = STOCKS.find(x => x.ticker === t);
+    return s && s.sector === 'India';
+  }).length;
+}
+
+// ═══════════════════════════════════════════════════════
+//  GAME FLOW
+// ═══════════════════════════════════════════════════════
+function startGame() {
+  document.getElementById('introScreen').style.display = 'none';
+  initPrices();
+  state.started = true;
+  state.day = 1;
+  generateDayPrices(1);
+  updateAll();
+  renderStockTable();
+  renderTicker();
+  initCharts();
+  showToast('Simulation started! You have ₹10,000. Good luck! 🚀', 'info');
+}
+
+function advanceDay() {
+  if (!state.started || state.day >= state.maxDays) return;
+
+  // Stats: days without trade
+  state.stats.daysNoTrade++;
+  state.stats.longestNoTrade = Math.max(state.stats.longestNoTrade, state.stats.daysNoTrade);
+
+  const prevPortfolio = getPortfolioValue();
+  state.day++;
+  const event = generateDayPrices(state.day);
+  const curPortfolio = getPortfolioValue();
+
+  state.portfolioHistory.push(parseFloat(curPortfolio.toFixed(2)));
+
+  // Check crash survival
+  if (event && event.impact <= -0.10 && curPortfolio >= state.startingCash) {
+    state.stats.survivedCrash = true;
+  }
+
+  // Update stats
+  state.stats.portfolioPct = ((curPortfolio - state.startingCash) / state.startingCash) * 100;
+  state.stats.sectorsHeld = getSectorsHeld();
+  state.stats.indiaStocks = getIndiaStocks();
+
+  // Rep calculation
+  const pct = state.stats.portfolioPct;
+  state.rep = Math.max(0, Math.round(50 + pct * 2 + state.stats.totalTrades * 1.5 + state.achievements.size * 10));
+
+  // Check achievements
+  checkAchievements();
+
+  // Build day events
+  state.dayEvents = [];
+  if (event) {
+    state.dayEvents.push(event);
+    state.news.unshift({ ...event, day: state.day });
+  }
+
+  // Show report
+  showDailyReport(event, prevPortfolio, curPortfolio);
+
+  updateAll();
+  renderStockTable();
+  updateCharts();
+  renderTicker();
+}
+
+function checkAchievements() {
+  ACHIEVEMENTS.forEach(a => {
+    if (!state.achievements.has(a.id) && a.check(state.stats)) {
+      state.achievements.add(a.id);
+      showToast(`🏆 Achievement Unlocked: ${a.name}`, 'success');
+      state.rep += 25;
+    }
+  });
+}
+
+// ═══════════════════════════════════════════════════════
+//  TRADING
+// ═══════════════════════════════════════════════════════
+let modalState = { mode: 'buy', ticker: '' };
+
+function openBuy(ticker) {
+  modalState = { mode: 'buy', ticker };
+  const stock = STOCKS.find(s => s.ticker === ticker);
+  const price = state.currentPrices[ticker];
+  document.getElementById('modalTitle').textContent = `Buy ${ticker}`;
+  document.getElementById('modalSub').textContent = `${stock.name} · ${stock.sector}`;
+  document.getElementById('modalPrice').textContent = `₹${fmt(price)}`;
+  document.getElementById('modalQty').value = 1;
+  document.getElementById('modalBalance').textContent = `Available: ₹${fmt(state.cash)}`;
+  document.getElementById('modalConfirmBtn').className = 'btn-confirm-buy';
+  document.getElementById('modalConfirmBtn').textContent = 'Buy';
+  updateModalTotal();
+  document.getElementById('tradeModal').classList.add('open');
+}
+
+function openSell(ticker) {
+  const h = state.holdings[ticker];
+  if (!h || h.shares === 0) { showToast("You don't hold this stock.", 'error'); return; }
+  modalState = { mode: 'sell', ticker };
+  const stock = STOCKS.find(s => s.ticker === ticker);
+  const price = state.currentPrices[ticker];
+  document.getElementById('modalTitle').textContent = `Sell ${ticker}`;
+  document.getElementById('modalSub').textContent = `${stock.name} · ${stock.sector}`;
+  document.getElementById('modalPrice').textContent = `₹${fmt(price)}`;
+  document.getElementById('modalQty').value = 1;
+  document.getElementById('modalBalance').textContent = `You own: ${h.shares} shares`;
+  document.getElementById('modalConfirmBtn').className = 'btn-confirm-sell';
+  document.getElementById('modalConfirmBtn').textContent = 'Sell';
+  updateModalTotal();
+  document.getElementById('tradeModal').classList.add('open');
+}
+
+function updateModalTotal() {
+  const price = state.currentPrices[modalState.ticker] || 0;
+  const qty = parseInt(document.getElementById('modalQty').value) || 0;
+  document.getElementById('modalTotal').textContent = `₹${fmt(price * qty)}`;
+}
+
+function closeModal() { document.getElementById('tradeModal').classList.remove('open'); }
+
+function confirmTrade() {
+  const { mode, ticker } = modalState;
+  const qty = parseInt(document.getElementById('modalQty').value);
+  const price = state.currentPrices[ticker];
+  if (!qty || qty < 1) { showToast('Enter a valid quantity.', 'error'); return; }
+
+  if (mode === 'buy') {
+    const cost = qty * price;
+    if (cost > state.cash) { showToast('Insufficient funds!', 'error'); return; }
+    state.cash -= cost;
+    if (!state.holdings[ticker]) state.holdings[ticker] = { shares: 0, avgCost: 0, buyDay: state.day };
+    const h = state.holdings[ticker];
+    const totalCost = h.shares * h.avgCost + cost;
+    h.shares += qty;
+    h.avgCost = totalCost / h.shares;
+    h.buyDay = state.day;
+
+    state.tradeLog.unshift({ day: state.day, type: 'BUY', ticker, qty, price, total: cost });
+    state.stats.totalTrades++;
+    state.stats.totalBuys++;
+    state.stats.daysNoTrade = 0;
+    state.stats.recentBuys.push(state.day);
+    state.stats.recentBuys = state.stats.recentBuys.filter(d => state.day - d <= 3);
+    state.stats.burstBuys = Math.max(state.stats.burstBuys, state.stats.recentBuys.length);
+
+    showToast(`Bought ${qty} × ${ticker} @ ₹${fmt(price)}`, 'success');
+  } else {
+    const h = state.holdings[ticker];
+    if (!h || qty > h.shares) { showToast('Not enough shares!', 'error'); return; }
+    const proceeds = qty * price;
+    const costBasis = qty * h.avgCost;
+    const pl = proceeds - costBasis;
+    state.cash += proceeds;
+    h.shares -= qty;
+    if (h.shares === 0) delete state.holdings[ticker];
+
+    if (pl > 0) state.stats.profitableTrades++;
+    if (pl > 0) state.stats.totalProfit += pl; else state.stats.totalLoss += Math.abs(pl);
+    state.tradeLog.unshift({ day: state.day, type: 'SELL', ticker, qty, price, total: proceeds, pl });
+    state.stats.totalTrades++;
+    state.stats.totalSells++;
+    state.stats.daysNoTrade = 0;
+
+    showToast(`Sold ${qty} × ${ticker} @ ₹${fmt(price)} · P&L: ${pl >= 0 ? '+' : ''}₹${fmt(pl)}`, pl >= 0 ? 'success' : 'error');
+  }
+
+  closeModal();
+  checkAchievements();
+  updateAll();
+  renderStockTable();
+  updateCharts();
+}
+
+// ═══════════════════════════════════════════════════════
+//  DAILY REPORT
+// ═══════════════════════════════════════════════════════
+function showDailyReport(event, prevVal, curVal) {
+  const change = curVal - prevVal;
+  const changePct = prevVal > 0 ? (change / prevVal) * 100 : 0;
+
+  const best = getBestWorstStock('best');
+  const worst = getBestWorstStock('worst');
+
+  document.getElementById('reportDay').textContent = `END OF DAY ${state.day}`;
+  document.getElementById('reportTitle').textContent = change >= 0 ? '📈 Good Day!' : '📉 Rough Day';
+
+  document.getElementById('reportGrid').innerHTML = `
+    <div class="report-stat">
+      <div class="report-stat-label">Portfolio Value</div>
+      <div class="report-stat-value" style="color:var(--accent)">₹${fmt(curVal)}</div>
+    </div>
+    <div class="report-stat">
+      <div class="report-stat-label">Day P&L</div>
+      <div class="report-stat-value ${change >= 0 ? 'up' : 'down'}">${change >= 0 ? '+' : ''}₹${fmt(change)} (${changePct >= 0 ? '+' : ''}${changePct.toFixed(2)}%)</div>
+    </div>
+    <div class="report-stat">
+      <div class="report-stat-label">Best Stock</div>
+      <div class="report-stat-value up">${best.ticker} +${best.pct.toFixed(2)}%</div>
+    </div>
+    <div class="report-stat">
+      <div class="report-stat-label">Worst Stock</div>
+      <div class="report-stat-value down">${worst.ticker} ${worst.pct.toFixed(2)}%</div>
+    </div>
+  `;
+
+  const evHTML = event ? `<div class="report-event"><strong>${event.icon} ${event.title}</strong><br>${event.body}</div>` : '<div class="report-event" style="opacity:.5">No major market events today.</div>';
+  document.getElementById('reportEvents').innerHTML = evHTML;
+
+  const tips = [
+    "Diversification reduces risk. Try spreading investments across sectors.",
+    "Buy the dip — but only if the fundamentals are strong.",
+    "Don't panic sell during market corrections. They are usually temporary.",
+    "High volatility = higher risk AND higher reward. Choose wisely.",
+    "Indian stocks can provide strong growth but watch currency risk.",
+    "Financial stocks often benefit from rising interest rates.",
+    "Energy stocks tend to follow oil price cycles.",
+    "Consumer staples are defensive — they hold value in downturns.",
+    "Technology stocks can be volatile but drive long-term returns.",
+    "Review your portfolio allocation regularly.",
+  ];
+  const tip = tips[state.day % tips.length];
+  document.getElementById('reportTip').innerHTML = `<strong>💡 Tip:</strong> ${tip}`;
+
+  document.getElementById('reportOverlay').classList.add('open');
+}
+
+function closeReport() {
+  document.getElementById('reportOverlay').classList.remove('open');
+}
+
+function getBestWorstStock(type) {
+  let result = { ticker: '-', pct: 0 };
+  STOCKS.forEach(s => {
+    const h = state.priceHistory[s.ticker];
+    if (h.length < 2) return;
+    const pct = (h[h.length-1] - h[h.length-2]) / h[h.length-2] * 100;
+    if (type === 'best' && pct > result.pct) result = { ticker: s.ticker, pct };
+    if (type === 'worst' && pct < result.pct) result = { ticker: s.ticker, pct };
+  });
+  return result;
+}
+
+// ═══════════════════════════════════════════════════════
+//  UI UPDATES
+// ═══════════════════════════════════════════════════════
+function updateAll() {
+  const portfolio = getPortfolioValue();
+  const change = portfolio - state.startingCash;
+  const changePct = (change / state.startingCash) * 100;
+  const dayPL = state.portfolioHistory.length >= 2
+    ? portfolio - state.portfolioHistory[state.portfolioHistory.length - 2]
+    : 0;
+  const dayPct = state.portfolioHistory.length >= 2 && state.portfolioHistory[state.portfolioHistory.length-2] > 0
+    ? (dayPL / state.portfolioHistory[state.portfolioHistory.length-2]) * 100 : 0;
+
+  // Nav
+  document.getElementById('navCash').textContent = '₹' + fmt(state.cash);
+  document.getElementById('navDay').textContent = `DAY ${state.day} / ${state.maxDays}`;
+
+  // Dashboard
+  const dateStr = getSimDate(state.day);
+  document.getElementById('dashDate').textContent = `Simulation Date: ${dateStr} · Day ${state.day} of ${state.maxDays}`;
+  document.getElementById('marketDate').textContent = `Market Date: ${dateStr}`;
+
+  const pv = document.getElementById('dashPortfolio');
+  pv.textContent = '₹' + fmt(portfolio);
+  pv.className = 'card-value ' + (change >= 0 ? 'up' : 'down');
+
+  document.getElementById('dashPortfolioChange').textContent =
+    `${change >= 0 ? '+' : ''}₹${fmt(change)} (${changePct >= 0 ? '+' : ''}${changePct.toFixed(2)}%)`;
+  document.getElementById('dashCash').textContent = '₹' + fmt(state.cash);
+  document.getElementById('dashCashPct').textContent = `${((state.cash/portfolio)*100).toFixed(1)}% of portfolio`;
+
+  const dpl = document.getElementById('dashDayPL');
+  dpl.textContent = (dayPL >= 0 ? '+' : '') + '₹' + fmt(dayPL);
+  dpl.className = 'card-value ' + (dayPL >= 0 ? 'up' : dayPL < 0 ? 'down' : 'neutral');
+  document.getElementById('dashDayPLPct').textContent = `${dayPct >= 0 ? '+' : ''}${dayPct.toFixed(2)}% today`;
+
+  document.getElementById('dashRep').textContent = state.rep;
+  const repPct = Math.min(100, (state.rep / 500) * 100);
+  document.getElementById('dashRepBar').style.width = repPct + '%';
+
+  // Top holdings
+  renderTopHoldings();
+  renderRecentAchievements();
+
+  // Portfolio page
+  renderPortfolioPage(portfolio, change, changePct, dayPL);
+
+  // Strategy
+  renderStrategy();
+
+  // News
+  renderNews();
+
+  // Disable next day btn at end
+  document.getElementById('btnNextDay').disabled = state.day >= state.maxDays;
+}
+
+function getSimDate(day) {
+  const base = new Date('2020-01-02');
+  base.setDate(base.getDate() + day - 1);
+  return base.toLocaleDateString('en-IN', { year:'numeric', month:'short', day:'numeric' });
+}
+
+function fmt(n) {
+  const abs = Math.abs(n);
+  if (abs >= 10000000) return (n/10000000).toFixed(2) + 'Cr';
+  if (abs >= 100000) return (n/100000).toFixed(2) + 'L';
+  if (abs >= 1000) return n.toLocaleString('en-IN', { maximumFractionDigits: 2 });
+  return n.toFixed(2);
+}
+
+// ═══════════════════════════════════════════════════════
+//  STOCK TABLE
+// ═══════════════════════════════════════════════════════
+function renderStockTable() {
+  const search = (document.getElementById('stockSearch')?.value || '').toLowerCase();
+  const tbody = document.getElementById('stockTableBody');
+  let rows = '';
+
+  STOCKS.filter(s => {
+    const matchFilter = state.activeFilter === 'all' || s.sector === state.activeFilter;
+    const matchSearch = !search || s.ticker.toLowerCase().includes(search) || s.name.toLowerCase().includes(search);
+    return matchFilter && matchSearch;
+  }).forEach(s => {
+    const price = state.currentPrices[s.ticker];
+    const prev = state.priceHistory[s.ticker][state.priceHistory[s.ticker].length - 2];
+    const chg = prev ? ((price - prev) / prev * 100) : 0;
+    const cls = chg > 0 ? 'up' : chg < 0 ? 'down' : 'neutral';
+    const badge = `sector-${s.sector.toLowerCase()}`;
+    const held = state.holdings[s.ticker] ? state.holdings[s.ticker].shares : 0;
+
+    rows += `<tr onclick="selectStock('${s.ticker}')" style="cursor:pointer;">
+      <td>
+        <div class="stock-ticker">${s.ticker}</div>
+        <div class="stock-name">${s.name}${held > 0 ? ` · <span style="color:var(--accent);font-size:0.65rem;">↑ ${held} shares</span>` : ''}</div>
+      </td>
+      <td><span class="sector-badge ${badge}">${s.sector}</span></td>
+      <td><strong>₹${fmt(price)}</strong></td>
+      <td class="${cls}">${chg >= 0 ? '+' : ''}${chg.toFixed(2)}%</td>
+      <td style="color:var(--text3)">${(state.priceHistory[s.ticker][state.priceHistory[s.ticker].length - 1] * 100000 | 0).toLocaleString()}</td>
+      <td>
+        <div style="display:flex;gap:6px;">
+          <button class="btn-buy" onclick="event.stopPropagation();openBuy('${s.ticker}')">Buy</button>
+          ${held > 0 ? `<button class="btn-sell" onclick="event.stopPropagation();openSell('${s.ticker}')">Sell</button>` : ''}
+        </div>
+      </td>
+    </tr>`;
+  });
+  tbody.innerHTML = rows || '<tr><td colspan="6" style="color:var(--text3);padding:20px;text-align:center;">No stocks found</td></tr>';
+}
+
+function filterStocks() { renderStockTable(); }
+function filterBySector(s) { state.activeFilter = s; renderStockTable(); }
+
+function selectStock(ticker) {
+  state.selectedTicker = ticker;
+  const stock = STOCKS.find(s => s.ticker === ticker);
+  const price = state.currentPrices[ticker];
+  const hist = state.priceHistory[ticker];
+  const prev = hist.length >= 2 ? hist[hist.length-2] : hist[0];
+  const chg = ((price - prev) / prev * 100);
+  const cls = chg >= 0 ? 'var(--green)' : 'var(--red)';
+
+  document.getElementById('chartStockTitle').textContent = `${ticker} — ${stock.name}`;
+  document.getElementById('chartStockSub').innerHTML =
+    `<span class="sector-badge sector-${stock.sector.toLowerCase()}">${stock.sector}</span>
+     &nbsp;₹${fmt(price)}&nbsp;<span style="color:${cls}">${chg >= 0 ? '+' : ''}${chg.toFixed(2)}%</span>`;
+
+  document.getElementById('chartActions').innerHTML = `
+    <button class="btn-buy" onclick="openBuy('${ticker}')" style="flex:1;padding:10px;">Buy ${ticker}</button>
+    ${state.holdings[ticker] ? `<button class="btn-sell" onclick="openSell('${ticker}')" style="flex:1;padding:10px;">Sell ${ticker}</button>` : ''}
+  `;
+
+  updateStockChart(ticker);
+}
+
+// ═══════════════════════════════════════════════════════
+//  CHARTS
+// ═══════════════════════════════════════════════════════
+function initCharts() {
+  Chart.defaults.color = '#8899b4';
+  Chart.defaults.borderColor = '#2a3a55';
+
+  const commonOptions = {
+    responsive: true, maintainAspectRatio: false,
+    plugins: { legend: { display: false }, tooltip: { callbacks: {
+      label: ctx => ' ₹' + fmt(ctx.parsed.y ?? ctx.parsed)
+    }}},
+    scales: {
+      x: { grid: { color: 'rgba(42,58,85,0.4)' }, ticks: { font: { family:'Space Mono', size:10 }, maxTicksLimit:8 } },
+      y: { grid: { color: 'rgba(42,58,85,0.4)' }, ticks: { font: { family:'Space Mono', size:10 }, callback: v => '₹'+fmt(v) } }
+    }
+  };
+
+  // Portfolio chart
+  const pCtx = document.getElementById('portfolioChart').getContext('2d');
+  const grad = pCtx.createLinearGradient(0, 0, 0, 300);
+  grad.addColorStop(0, 'rgba(0,229,255,0.18)');
+  grad.addColorStop(1, 'rgba(0,229,255,0)');
+  state.portfolioChartInst = new Chart(pCtx, {
+    type: 'line',
+    data: {
+      labels: ['Start'],
+      datasets: [{ data: [state.startingCash], borderColor: '#00e5ff', backgroundColor: grad, tension: 0.4, borderWidth: 2, pointRadius: 0, fill: true }]
+    },
+    options: { ...commonOptions }
+  });
+
+  // Sector donut
+  const sCtx = document.getElementById('sectorChart').getContext('2d');
+  state.sectorChartInst = new Chart(sCtx, {
+    type: 'doughnut',
+    data: {
+      labels: ['Cash'],
+      datasets: [{ data: [100], backgroundColor: ['#2a3a55'], borderColor: '#0a0e1a', borderWidth: 2 }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false, cutout: '70%',
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ` ${ctx.label}: ${ctx.parsed.toFixed(1)}%` } } }
+    }
+  });
+
+  // Stock chart (empty init)
+  const stCtx = document.getElementById('stockChart').getContext('2d');
+  state.stockChartInst = new Chart(stCtx, {
+    type: 'line',
+    data: { labels: [], datasets: [{ data: [], borderColor: '#00e5ff', tension: 0.4, borderWidth: 2, pointRadius: 0, fill: false }] },
+    options: { ...commonOptions }
+  });
+
+  // Portfolio donut
+  const pdCtx = document.getElementById('portfolioDonut').getContext('2d');
+  state.portfolioDonutInst = new Chart(pdCtx, {
+    type: 'doughnut',
+    data: { labels: ['Cash'], datasets: [{ data: [100], backgroundColor: ['#2a3a55'], borderColor: '#0a0e1a', borderWidth: 2 }] },
+    options: { responsive: true, maintainAspectRatio: false, cutout: '65%', plugins: { legend: { display: true, position: 'right', labels: { font: { family:'Space Mono', size:10 }, color:'#8899b4', boxWidth: 12 } } } }
+  });
+}
+
+function updateCharts() {
+  // Portfolio history chart
+  const ph = state.portfolioChartInst;
+  ph.data.labels = state.portfolioHistory.map((_, i) => i === 0 ? 'Start' : `D${i}`);
+  ph.data.datasets[0].data = state.portfolioHistory;
+  const lastVal = state.portfolioHistory[state.portfolioHistory.length-1];
+  const isUp = lastVal >= state.startingCash;
+  ph.data.datasets[0].borderColor = isUp ? '#00e676' : '#ff1744';
+  const pCtx = document.getElementById('portfolioChart').getContext('2d');
+  const grad2 = pCtx.createLinearGradient(0,0,0,300);
+  grad2.addColorStop(0, isUp ? 'rgba(0,230,118,0.15)' : 'rgba(255,23,68,0.15)');
+  grad2.addColorStop(1, 'rgba(0,0,0,0)');
+  ph.data.datasets[0].backgroundColor = grad2;
+  ph.update('none');
+
+  // Sector donut
+  updateSectorCharts();
+
+  // Stock chart
+  if (state.selectedTicker) updateStockChart(state.selectedTicker);
+}
+
+function updateSectorCharts() {
+  const portfolio = getPortfolioValue();
+  const sectors = {};
+  Object.entries(state.holdings).forEach(([ticker, h]) => {
+    const s = STOCKS.find(x => x.ticker === ticker);
+    if (!s) return;
+    const val = h.shares * state.currentPrices[ticker];
+    sectors[s.sector] = (sectors[s.sector] || 0) + val;
+  });
+
+  const cashPct = (state.cash / portfolio) * 100;
+  const labels = ['Cash', ...Object.keys(sectors)];
+  const data = [cashPct, ...Object.values(sectors).map(v => (v/portfolio)*100)];
+  const colors = ['#2a3a55', ...Object.keys(sectors).map(k => SECTOR_COLORS[k] || '#fff')];
+
+  [state.sectorChartInst, state.portfolioDonutInst].forEach(c => {
+    if (!c) return;
+    c.data.labels = labels;
+    c.data.datasets[0].data = data;
+    c.data.datasets[0].backgroundColor = colors;
+    c.update('none');
+  });
+
+  const legendEl = document.getElementById('sectorLegend');
+  if (legendEl) {
+    legendEl.innerHTML = labels.map((l, i) => `
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+        <div style="width:8px;height:8px;border-radius:2px;background:${colors[i]};flex-shrink:0;"></div>
+        <span style="color:var(--text2)">${l}</span>
+        <span style="color:var(--text);margin-left:auto">${data[i].toFixed(1)}%</span>
+      </div>`).join('');
+  }
+}
+
+function updateStockChart(ticker) {
+  const hist = state.priceHistory[ticker];
+  const sc = state.stockChartInst;
+  sc.data.labels = hist.map((_, i) => i === 0 ? 'D0' : `D${i}`);
+  sc.data.datasets[0].data = hist;
+  const first = hist[0], last = hist[hist.length-1];
+  sc.data.datasets[0].borderColor = last >= first ? '#00e676' : '#ff1744';
+  sc.update('none');
+}
+
+// ═══════════════════════════════════════════════════════
+//  RENDER HELPERS
+// ═══════════════════════════════════════════════════════
+function renderTopHoldings() {
+  const el = document.getElementById('topHoldingsList');
+  const entries = Object.entries(state.holdings);
+  if (entries.length === 0) {
+    el.innerHTML = '<p style="color:var(--text3);font-size:0.75rem;padding:8px 0;">No holdings yet.</p>';
+    return;
+  }
+  const sorted = entries.sort((a,b) => (b[1].shares * state.currentPrices[b[0]]) - (a[1].shares * state.currentPrices[a[0]])).slice(0,5);
+  el.innerHTML = sorted.map(([ticker, h]) => {
+    const price = state.currentPrices[ticker];
+    const val = h.shares * price;
+    const pl = val - h.shares * h.avgCost;
+    const plPct = (pl / (h.shares * h.avgCost)) * 100;
+    return `<div class="holding-row">
+      <div class="holding-ticker">${ticker}</div>
+      <div class="holding-shares">${h.shares} shares @ ₹${fmt(h.avgCost)}</div>
+      <div>
+        <div class="holding-value">₹${fmt(val)}</div>
+        <div class="holding-pl ${pl >= 0 ? 'up' : 'down'}">${pl >= 0 ? '+' : ''}₹${fmt(pl)} (${plPct >= 0 ? '+' : ''}${plPct.toFixed(1)}%)</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderRecentAchievements() {
+  const el = document.getElementById('recentAchievements');
+  const unlocked = ACHIEVEMENTS.filter(a => state.achievements.has(a.id)).slice(-3);
+  if (unlocked.length === 0) {
+    el.innerHTML = '<p style="color:var(--text3);font-size:0.75rem;padding:8px 0;">No achievements yet.</p>';
+    return;
+  }
+  el.innerHTML = unlocked.map(a => `
+    <div class="achievement unlocked" style="margin-bottom:8px;">
+      <div class="achievement-icon">${a.icon}</div>
+      <div><div class="achievement-name">${a.name}</div><div class="achievement-desc">${a.desc}</div></div>
+      <span class="achievement-badge">Unlocked</span>
+    </div>`).join('');
+}
+
+function renderPortfolioPage(portfolio, change, changePct, dayPL) {
+  const statsEl = document.getElementById('portfolioStats');
+  statsEl.innerHTML = `
+    <div class="card"><div class="card-title">Total Value</div><div class="card-value ${change>=0?'up':'down'}">₹${fmt(portfolio)}</div><div class="card-sub">${change>=0?'+':''}₹${fmt(change)} (${changePct>=0?'+':''}${changePct.toFixed(2)}%)</div></div>
+    <div class="card"><div class="card-title">Invested</div><div class="card-value">₹${fmt(portfolio - state.cash)}</div><div class="card-sub">${Object.keys(state.holdings).length} positions</div></div>
+    <div class="card"><div class="card-title">Day P&L</div><div class="card-value ${dayPL>=0?'up':dayPL<0?'down':'neutral'}">${dayPL>=0?'+':''}₹${fmt(dayPL)}</div></div>
+    <div class="card"><div class="card-title">Win Rate</div><div class="card-value">${state.stats.totalSells > 0 ? Math.round((state.stats.profitableTrades/state.stats.totalSells)*100) : 0}%</div><div class="card-sub">${state.stats.profitableTrades}/${state.stats.totalSells} trades</div></div>
+  `;
+
+  const holdEl = document.getElementById('holdingsList');
+  const entries = Object.entries(state.holdings);
+  if (!entries.length) { holdEl.innerHTML = '<p style="color:var(--text3);font-size:0.75rem;">No holdings.</p>'; }
+  else {
+    holdEl.innerHTML = entries.map(([ticker, h]) => {
+      const price = state.currentPrices[ticker];
+      const val = h.shares * price;
+      const pl = val - h.shares * h.avgCost;
+      const plPct = (pl / (h.shares * h.avgCost)) * 100;
+      const stock = STOCKS.find(s => s.ticker === ticker);
+      const barW = Math.min(100, Math.abs(plPct) * 2);
+      return `<div class="holding-row">
+        <div>
+          <div class="holding-ticker">${ticker}</div>
+          <span class="sector-badge sector-${stock.sector.toLowerCase()}" style="font-size:0.55rem;">${stock.sector}</span>
+        </div>
+        <div class="holding-shares">${h.shares} shares<br>avg ₹${fmt(h.avgCost)}</div>
+        <div>
+          <div class="holding-value">₹${fmt(val)}</div>
+          <div class="holding-pl ${pl>=0?'up':'down'}">${pl>=0?'+':''}₹${fmt(pl)} (${plPct>=0?'+':''}${plPct.toFixed(1)}%)</div>
+          <div class="pnl-bar-bg"><div class="pnl-bar" style="width:${barW}%;background:${pl>=0?'var(--green)':'var(--red)'}"></div></div>
+        </div>
+        <div style="display:flex;gap:6px;">
+          <button class="btn-buy" onclick="openBuy('${ticker}')">+</button>
+          <button class="btn-sell" onclick="openSell('${ticker}')">−</button>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  // Trade history
+  const thEl = document.getElementById('tradeHistory');
+  if (!state.tradeLog.length) { thEl.innerHTML = '<p style="color:var(--text3);font-size:0.72rem;">No trades yet.</p>'; }
+  else {
+    thEl.innerHTML = state.tradeLog.slice(0, 20).map(t => `
+      <div style="display:flex;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);font-size:0.7rem;">
+        <span class="${t.type==='BUY'?'up':'down'}" style="font-weight:700;min-width:32px;">${t.type}</span>
+        <span style="font-weight:700">${t.ticker}</span>
+        <span style="color:var(--text2)">${t.qty} × ₹${fmt(t.price)}</span>
+        <span style="margin-left:auto;color:var(--text2)">Day ${t.day}</span>
+        ${t.pl !== undefined ? `<span class="${t.pl>=0?'up':'down'}">${t.pl>=0?'+':''}₹${fmt(t.pl)}</span>` : ''}
+      </div>`).join('');
+  }
+}
+
+function renderNews() {
+  const el = document.getElementById('newsFeed');
+  if (!state.news.length) { el.innerHTML = '<p style="color:var(--text3);font-size:0.75rem;">Advance the simulation to see market events.</p>'; return; }
+  el.innerHTML = state.news.map(n => `
+    <div class="news-item">
+      <div class="news-icon">${n.icon}</div>
+      <div>
+        <div class="news-title">${n.title}
+          <span class="news-impact ${n.type==='positive'?'impact-positive':n.type==='negative'?'impact-negative':'impact-neutral'}">${n.type}</span>
+        </div>
+        <div class="news-body">${n.body}</div>
+        <div class="news-meta">Day ${n.day} · Affected: ${n.sectors.join(', ')}</div>
+      </div>
+    </div>`).join('');
+}
+
+function renderStrategy() {
+  // Personality
+  const t = state.stats;
+  let personality = 'Undecided', pdesc = 'Make at least 5 trades to determine your investor personality type.';
+  if (t.totalTrades >= 5) {
+    const buyRatio = t.totalBuys / Math.max(1, t.totalTrades);
+    const holdRatio = t.longestNoTrade / Math.max(1, state.day);
+    if (t.sectorsHeld >= 4) { personality = '🌐 Diversifier'; pdesc = 'You spread risk across multiple sectors. Steady, balanced approach.'; }
+    else if (holdRatio > 0.3) { personality = '🧘 Long-Term Investor'; pdesc = 'Patient, disciplined. You hold positions and resist short-term noise.'; }
+    else if (t.burstBuys >= 5) { personality = '🚀 Momentum Trader'; pdesc = 'You chase trends and move fast. High risk, potential high reward.'; }
+    else if (buyRatio > 0.75) { personality = '📈 Bull Chaser'; pdesc = 'You love buying. Be careful of overexposure to market risk.'; }
+    else if (buyRatio < 0.4) { personality = '🐻 Bear Cautious'; pdesc = 'You take profits aggressively. Good risk management instinct.'; }
+    else { personality = '⚖️ Balanced Trader'; pdesc = 'Even mix of buys and sells. Methodical and calculated approach.'; }
+  }
+  document.getElementById('personalityName').textContent = personality;
+  document.getElementById('personalityDesc').textContent = pdesc;
+
+  // Stats
+  document.getElementById('tradingStats').innerHTML = `
+    Total Trades: <strong style="color:var(--text)">${t.totalTrades}</strong><br>
+    Buys: <strong style="color:var(--green)">${t.totalBuys}</strong> &nbsp; Sells: <strong style="color:var(--red)">${t.totalSells}</strong><br>
+    Win Rate: <strong style="color:var(--text)">${t.totalSells > 0 ? Math.round((t.profitableTrades/t.totalSells)*100) : 0}%</strong><br>
+    Total Profit: <strong style="color:var(--green)">₹${fmt(t.totalProfit)}</strong><br>
+    Total Loss: <strong style="color:var(--red)">₹${fmt(t.totalLoss)}</strong><br>
+    Longest No-Trade Streak: <strong style="color:var(--text)">${t.longestNoTrade} days</strong>
+  `;
+
+  // Risk
+  const portfolio = getPortfolioValue();
+  const investedPct = ((portfolio - state.cash) / portfolio * 100) || 0;
+  const riskLevel = investedPct > 80 ? '🔴 High' : investedPct > 50 ? '🟡 Medium' : '🟢 Low';
+  document.getElementById('riskAnalysis').innerHTML = `
+    Exposure: <strong style="color:var(--text)">${investedPct.toFixed(1)}%</strong> invested<br>
+    Risk Level: <strong>${riskLevel}</strong><br>
+    Sectors: <strong style="color:var(--text)">${t.sectorsHeld}</strong> diversified<br>
+    Rep Score: <strong style="color:var(--accent)">${state.rep}</strong><br>
+    Portfolio Change: <strong class="${state.stats.portfolioPct>=0?'up':'down'}">${state.stats.portfolioPct>=0?'+':''}${state.stats.portfolioPct.toFixed(2)}%</strong>
+  `;
+
+  // Achievements
+  const ael = document.getElementById('achievementsList');
+  ael.innerHTML = ACHIEVEMENTS.map(a => {
+    const unlocked = state.achievements.has(a.id);
+    return `<div class="achievement ${unlocked ? 'unlocked' : ''}">
+      <div class="achievement-icon">${a.icon}</div>
+      <div><div class="achievement-name">${a.name}</div><div class="achievement-desc">${a.desc}</div></div>
+      <span class="achievement-badge">${unlocked ? 'Unlocked' : 'Locked'}</span>
+    </div>`;
+  }).join('');
+}
+
+function renderTicker() {
+  const inner = document.getElementById('tickerInner');
+  const items = STOCKS.slice(0, 12).map(s => {
+    const price = state.currentPrices[s.ticker] || s.base;
+    const hist = state.priceHistory[s.ticker];
+    const prev = hist && hist.length >= 2 ? hist[hist.length-2] : price;
+    const chg = ((price - prev) / prev * 100);
+    const cls = chg >= 0 ? 'var(--green)' : 'var(--red)';
+    return `<div class="ticker-item">
+      <span class="ticker-sym">${s.ticker}</span>
+      <span style="color:${cls}">₹${fmt(price)}</span>
+      <span style="color:${cls}">${chg >= 0 ? '▲' : '▼'}${Math.abs(chg).toFixed(2)}%</span>
+    </div>`;
+  }).join('');
+  // Duplicate for seamless loop
+  inner.innerHTML = items + items;
+}
+
+// ═══════════════════════════════════════════════════════
+//  TOAST
+// ═══════════════════════════════════════════════════════
+let toastTimer;
+function showToast(msg, type='info') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = `toast ${type} show`;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 3500);
+}
+
+// ═══════════════════════════════════════════════════════
+//  PAGE NAV
+// ═══════════════════════════════════════════════════════
+function showPage(page, btn) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-tab').forEach(b => b.classList.remove('active'));
+  document.getElementById('page-' + page).classList.add('active');
+  if (btn) btn.classList.add('active');
+  if (page === 'market') renderStockTable();
+  if (page === 'portfolio') updateAll();
+  if (page === 'strategy') renderStrategy();
+}
+</script>
+</body>
+</html>
