@@ -1,6 +1,8 @@
 
 import { useState, useEffect, useRef } from "react";
- 
+ import {
+  LineChart, Line, XAxis, YAxis, Tooltip
+} from "recharts";
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
  
 function formatHour(h) {
